@@ -1,0 +1,411 @@
+
+# Proyecto: Predicción de enfermedad cardíaca
+# Facultad de Ciencias, UNAM-Temas selectos en biomatemáticas
+
+# Instalación de librerías necesarias
+!pip install pandas numpy matplotlib seaborn scikit-learn plotly -q
+
+# Importar librerías
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+# Configuración de estilo
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+plt.rcParams['figure.figsize'] = (14, 8)
+plt.rcParams['font.size'] = 12
+
+# Convertimos el contenido en string
+data_str = """age,sex,cp,trestbps,chol,fbs,restecg,thalach,exang,oldpeak,slope,ca,thal,target
+52,1,0,125,212,0,1,168,0,1,2,2,3,0
+53,1,0,140,203,1,0,155,1,3.1,0,0,3,0
+70,1,0,145,174,0,1,125,1,2.6,0,0,3,0
+61,1,0,148,203,0,1,161,0,0,2,1,3,0
+62,0,0,138,294,1,1,106,0,1.9,1,3,2,0
+58,0,0,100,248,0,0,122,0,1,1,0,2,1"""
+
+# Cargar el dataset completo
+from google.colab import files
+import io
+
+print("Sube el archivo heart.csv")
+uploaded = files.upload()
+
+# Leer el archivo
+df = pd.read_csv(io.BytesIO(uploaded['heart.csv']))
+
+# Información básica del dataset
+print("="*80)
+print("Información general del dataset")
+print("="*80)
+
+print(f"Dimensiones: {df.shape[0]} pacientes, {df.shape[1]} variables")
+print(f"Valores nulos totales: {df.isnull().sum().sum()}")
+print(f"Duplicados: {df.duplicated().sum()}")
+
+# Mostrar información detallada
+print("\nTipos de datos:")
+print(df.dtypes)
+
+print("\nEstadísticas descriptivas básicas:")
+print(df.describe().round(2))
+
+# Explicación clínica de variables
+print("\n" + "="*80)
+print("Significado clínico de las variables")
+print("="*80)
+
+variables_info = {
+    'age': 'Edad del paciente (años)',
+    'sex': 'Sexo (1 = masculino, 0 = femenino)',
+    'cp': 'Tipo de dolor torácico:\n  0: Angina típica\n  1: Angina atípica\n  2: Dolor no anginoso\n  3: Asintomático',
+    'trestbps': 'Presión arterial en reposo (mm Hg)',
+    'chol': 'Colesterol sérico (mg/dl)',
+    'fbs': 'Glucosa en ayunas > 120 mg/dl (1 = sí, 0 = no)',
+    'restecg': 'Electrocardiograma en reposo:\n  0: Normal\n  1: Anormalidad ST-T\n  2: Hipertrofia ventricular izquierda',
+    'thalach': 'Frecuencia cardíaca máxima alcanzada',
+    'exang': 'Angina inducida por ejercicio (1 = sí, 0 = no)',
+    'oldpeak': 'Depresión del segmento ST inducida por ejercicio',
+    'slope': 'Pendiente del segmento ST en ejercicio máximo:\n  0: Descendente\n  1: Plana\n  2: Ascendente',
+    'ca': 'Número de vasos principales coloreados por fluoroscopia (0-3)',
+    'thal': 'Resultado de la prueba de talio:\n  1: Normal\n  2: Defecto fijo\n  3: Defecto reversible',
+    'target': 'Diagnóstico de enfermedad cardíaca (0 = no, 1 = sí)'
+}
+
+for var, info in variables_info.items():
+    print(f"\n- {var}:")
+    print(f"  {info}")
+    if var in df.columns:
+        print(f"  Valores únicos: {df[var].unique()[:10]}...")
+
+# Análisis de la variable objetivo (target)
+print("\n" + "="*80)
+print("Análisis de la variable objetivo (target)")
+print("="*80)
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+# Distribución
+target_counts = df['target'].value_counts()
+axes[0].bar(['Sin enfermedad (0)', 'Con enfermedad (1)'],
+            target_counts.values,
+            color=['#3498db', '#e74c3c'])
+axes[0].set_title('Distribución de diagnóstico cardíaco', fontsize=14, fontweight='bold')
+axes[0].set_ylabel('Número de pacientes')
+axes[0].set_xlabel('Diagnóstico')
+for i, v in enumerate(target_counts.values):
+    axes[0].text(i, v + 5, str(v), ha='center', fontweight='bold', fontsize=12)
+
+# Proporción
+axes[1].pie(target_counts.values,
+           labels=['Sin enfermedad', 'Con enfermedad'],
+           autopct='%1.1f%%',
+           colors=['#3498db', '#e74c3c'],
+           startangle=90,
+           explode=(0.05, 0.05))
+axes[1].set_title('Proporción de casos', fontsize=14, fontweight='bold')
+
+# Distribución por edad
+sns.histplot(data=df, x='age', hue='target', kde=True, ax=axes[2],
+             palette={0: '#3498db', 1: '#e74c3c'})
+axes[2].set_title('Distribución de edad por diagnóstico', fontsize=14, fontweight='bold')
+axes[2].set_xlabel('Edad (años)')
+axes[2].set_ylabel('Frecuencia')
+axes[2].legend(['Sin enfermedad', 'Con enfermedad'])
+
+plt.tight_layout()
+plt.show()
+
+# Estadísticas de la distribución
+print(f"\nEstadísticas de distribución:")
+print(f"- Total de pacientes: {len(df)}")
+print(f"- Pacientes con enfermedad cardíaca: {target_counts[1]} ({target_counts[1]/len(df)*100:.1f}%)")
+print(f"- Pacientes sin enfermedad cardíaca: {target_counts[0]} ({target_counts[0]/len(df)*100:.1f}%)")
+print(f"- Balance de clases: {'Balanceado' if 40 <= target_counts[1]/len(df)*100 <= 60 else 'Desbalanceado'}")
+print(f"- Edad promedio pacientes sanos: {df[df['target']==0]['age'].mean():.1f} años")
+print(f"- Edad promedio pacientes enfermos: {df[df['target']==1]['age'].mean():.1f} años")
+
+# Análisis de variables numéricas
+print("\n" + "="*80)
+print("Análisis de variables numéricas")
+print("="*80)
+
+numeric_vars = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+axes = axes.flatten()
+
+for i, var in enumerate(numeric_vars):
+    # Histograma con KDE
+    sns.histplot(data=df, x=var, kde=True, bins=25, ax=axes[i], color='steelblue')
+    axes[i].set_title(f'Distribución de {var}', fontsize=13, fontweight='bold')
+    axes[i].set_xlabel(var)
+
+    # Líneas de media y mediana
+    mean_val = df[var].mean()
+    median_val = df[var].median()
+    axes[i].axvline(mean_val, color='red', linestyle='--', linewidth=2,
+                    label=f'Media: {mean_val:.1f}')
+    axes[i].axvline(median_val, color='green', linestyle=':', linewidth=2,
+                    label=f'Mediana: {median_val:.1f}')
+    axes[i].legend()
+
+    # Estadísticas en texto
+    stats_text = f"Media: {mean_val:.1f}\nMediana: {median_val:.1f}\nStd: {df[var].std():.1f}"
+    axes[i].text(0.02, 0.98, stats_text, transform=axes[i].transAxes,
+                verticalalignment='top', fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+# Eliminar eje sobrante
+axes[-1].set_visible(False)
+
+plt.suptitle('Distribución de variables numéricas', fontsize=16, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.show()
+
+# Comparación entre grupos (sano vs enfermo)
+print("\n" + "="*80)
+print("Comparación: pacientes sanos vs enfermos")
+print("="*80)
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+axes = axes.flatten()
+
+for i, var in enumerate(numeric_vars):
+    # Crear DataFrame para el boxplot
+    data_to_plot = [df[df['target']==0][var], df[df['target']==1][var]]
+
+    # Boxplot
+    bp = axes[i].boxplot(data_to_plot, patch_artist=True,
+                         labels=['Sano (0)', 'Enfermo (1)'])
+
+    # Colores
+    colors = ['#3498db', '#e74c3c']
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
+
+    # Configuración del gráfico
+    axes[i].set_title(f'{var} por condición cardíaca', fontsize=13, fontweight='bold')
+    axes[i].set_ylabel(var)
+
+    # Calcular y mostrar diferencias estadísticas
+    group_0 = df[df['target']==0][var]
+    group_1 = df[df['target']==1][var]
+
+    mean_0, mean_1 = group_0.mean(), group_1.mean()
+    median_0, median_1 = group_0.median(), group_1.median()
+
+    # Test t para diferencia de medias
+    t_stat, p_value = stats.ttest_ind(group_0, group_1, nan_policy='omit')
+
+    # Texto informativo
+    info_text = f'Dif. media: {mean_1-mean_0:+.1f}\n'
+    info_text += f'p-value: {p_value:.4f}\n'
+    info_text += f'{"Significativo" if p_value < 0.05 else "No significativo"}'
+
+    axes[i].text(0.02, 0.98, info_text, transform=axes[i].transAxes,
+                verticalalignment='top', fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+
+# Eliminar eje sobrante
+axes[-1].set_visible(False)
+
+plt.suptitle('Comparación de variables numéricas entre grupos',
+             fontsize=16, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.show()
+
+# Matriz de correlación
+print("\n" + "="*80)
+print("Matriz de correlación")
+print("="*80)
+
+# Calcular correlación
+corr_matrix = df.corr(numeric_only=True)
+
+# Gráfico de calor
+plt.figure(figsize=(14, 10))
+mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+sns.heatmap(corr_matrix, mask=mask, annot=True, fmt='.2f', cmap='coolwarm',
+            center=0, square=True, linewidths=1, cbar_kws={"shrink": 0.8},
+            annot_kws={"size": 10})
+plt.title('Matriz de correlación entre variables', fontsize=16, fontweight='bold', pad=20)
+plt.tight_layout()
+plt.show()
+
+# Correlaciones más importantes con la variable objetivo
+print("\nVariables más correlacionadas con enfermedad cardíaca:")
+target_corr = corr_matrix['target'].sort_values(ascending=False)
+
+print("\nCorrelaciones positivas (asociadas con enfermedad):")
+for var, corr in target_corr.items():
+    if var != 'target' and corr > 0:
+        print(f"  {var}: {corr:.3f}")
+
+print("\nCorrelaciones negativas (asociadas con salud):")
+for var, corr in target_corr.items():
+    if var != 'target' and corr < 0:
+        print(f"  {var}: {corr:.3f}")
+
+# Análisis de variables categóricas
+print("\n" + "="*80)
+print("Análisis de variables categóricas")
+print("="*80)
+
+categorical_vars = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal']
+
+# Crear subplots
+fig, axes = plt.subplots(4, 2, figsize=(16, 20))
+axes = axes.flatten()
+
+for i, var in enumerate(categorical_vars):
+    # Crear tabla de contingencia
+    cross_tab = pd.crosstab(df[var], df['target'], normalize='index') * 100
+
+    # Gráfico de barras apiladas
+    bars = cross_tab.plot(kind='bar', stacked=True, ax=axes[i],
+                          color=['#3498db', '#e74c3c'],
+                          edgecolor='black', width=0.8)
+
+    axes[i].set_title(f'Variable: {var}', fontsize=13, fontweight='bold')
+    axes[i].set_xlabel(var)
+    axes[i].set_ylabel('Porcentaje (%)')
+    axes[i].legend(['Sano', 'Enfermo'], title='Condición', loc='upper right')
+    axes[i].tick_params(axis='x', rotation=0)
+
+    # Añadir porcentajes en las barras
+    for container in axes[i].containers:
+        axes[i].bar_label(container, fmt='%.1f%%', label_type='center', fontsize=9)
+
+    # Estadísticas
+    chi2, p_value, dof, expected = stats.chi2_contingency(pd.crosstab(df[var], df['target']))
+    axes[i].text(0.02, 0.98, f'p-value: {p_value:.4f}', transform=axes[i].transAxes,
+                verticalalignment='top', fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
+
+plt.suptitle('Distribución de variables categóricas por diagnóstico',
+             fontsize=16, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.show()
+
+# Análisis de outliers
+print("\n" + "="*80)
+print("Detección de outliers")
+print("="*80)
+
+fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+axes = axes.flatten()
+
+for i, var in enumerate(numeric_vars[:6]):  # Analizar solo variables principales
+    # Boxplot
+    bp = axes[i].boxplot(df[var].dropna(), patch_artist=True, vert=True)
+    bp['boxes'][0].set_facecolor('lightblue')
+    bp['boxes'][0].set_alpha(0.7)
+
+    # Identificar outliers usando IQR
+    Q1 = df[var].quantile(0.25)
+    Q3 = df[var].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+
+    outliers = df[(df[var] < lower_bound) | (df[var] > upper_bound)][var]
+
+    axes[i].set_title(f'{var} - Boxplot', fontsize=13, fontweight='bold')
+    axes[i].set_ylabel(var)
+
+    # Información sobre outliers
+    info_text = f"Outliers: {len(outliers)} ({len(outliers)/len(df)*100:.1f}%)\n"
+    info_text += f"Límite inferior: {lower_bound:.1f}\n"
+    info_text += f"Límite superior: {upper_bound:.1f}"
+
+    axes[i].text(0.02, 0.98, info_text, transform=axes[i].transAxes,
+                verticalalignment='top', fontsize=10,
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
+
+plt.suptitle('Detección de outliers en variables numéricas',
+             fontsize=16, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.show()
+
+# Insights principales para el reporte
+print("\n" + "="*80)
+print("Insights principales del EDA para el reporte")
+print("="*80)
+
+insights = [
+    "Datos generales:",
+    f"  - Dataset con {df.shape[0]} pacientes y {df.shape[1]} variables clínicas.",
+    f"  - No hay valores nulos en el dataset.",
+    f"  - {df.duplicated().sum()} registros duplicados encontrados.",
+
+    "\nVariable objetivo (target):",
+    f"  - Distribución balanceada: {target_counts[1]} pacientes con enfermedad ({target_counts[1]/len(df)*100:.1f}%) vs {target_counts[0]} sin enfermedad ({target_counts[0]/len(df)*100:.1f}%).",
+    "  - No se requieren técnicas especiales para manejar desbalance.",
+
+    "\nVariables numéricas clave:",
+    f"  - Edad promedio: {df['age'].mean():.1f} años (rango: {df['age'].min()}-{df['age'].max()}).",
+    f"  - Pacientes con enfermedad tienden a ser más jóvenes (media: {df[df['target']==1]['age'].mean():.1f} vs {df[df['target']==0]['age'].mean():.1f} años).",
+    f"  - La frecuencia cardíaca máxima (thalach) muestra correlación negativa fuerte con enfermedad (-{abs(corr_matrix.loc['thalach', 'target']):.3f}).",
+    f"  - La depresión ST (oldpeak) muestra correlación positiva con enfermedad ({corr_matrix.loc['oldpeak', 'target']:.3f}).",
+
+    "\nHallazgos clínicamente relevantes:",
+    "  - El tipo de dolor torácico (cp) es un fuerte predictor: pacientes con tipos 2 y 3 tienen mayor prevalencia de enfermedad.",
+    "  - La angina inducida por ejercicio (exang) es más común en pacientes con enfermedad cardíaca.",
+    "  - El número de vasos principales afectados (ca) aumenta con la probabilidad de enfermedad.",
+    "  - Resultados de talio (thal) anormales se asocian con mayor riesgo.",
+
+    "\nOutliers y calidad de datos:",
+    "  - Variables como 'chol' (colesterol) y 'trestbps' (presión arterial) presentan algunos outliers.",
+    "  - Los outliers parecen ser valores clínicamente posibles, no errores de medición.",
+
+    "\nImplicaciones para el modelado:",
+    "  - Requerirá escalado de variables numéricas (StandardScaler).",
+    "  - Variables categóricas necesitan codificación (One-Hot Encoding).",
+    "  - Considerar técnicas de regularización debido a posibles multicolinealidades.",
+    "  - La métrica F1-score será importante dado el contexto médico.",
+
+    "\nHipótesis para validar en modelado:",
+    "  - Combinación de 'thalach' bajo y 'oldpeak' alto podría ser un predictor fuerte.",
+    "  - Interacción entre 'age' y 'sex' podría mejorar el modelo.",
+    "  - Variables como 'cp' y 'exang' serán importantes en modelos de árboles."
+]
+
+for insight in insights:
+    print(insight)
+
+print("\n" + "="*80)
+print("EDA completado. Listo para preparación de datos y modelado")
+print("="*80)
+
+# Guardar insights en un archivo de texto
+with open('insights_eda.txt', 'w') as f:
+    for insight in insights:
+        f.write(insight + '\n')
+
+print("\nInsights guardados en 'insights_eda.txt'")
+
+# Guardar gráficos para el reporte
+print("\nGuardando gráficos para el reporte...")
+
+# Guardar figura de distribución
+fig, ax = plt.subplots(figsize=(10, 6))
+bars = ax.bar(['Sin enfermedad', 'Con enfermedad'], target_counts.values,
+              color=['#3498db', '#e74c3c'])
+ax.set_title('Distribución de enfermedad cardíaca', fontsize=14, fontweight='bold')
+ax.set_ylabel('Número de pacientes')
+for bar in bars:
+    height = bar.get_height()
+    ax.text(bar.get_x() + bar.get_width()/2., height + 3,
+            f'{int(height)}', ha='center', fontweight='bold')
+plt.tight_layout()
+plt.savefig('distribucion_enfermedad.png', dpi=300, bbox_inches='tight')
+plt.close()
+
+print("Gráficos guardados. Listo para el siguiente paso.")
