@@ -1,0 +1,76 @@
+# Resumen para el reporte final
+print("\n" + "="*80)
+print("Resumen para el reporte final")
+print("="*80)
+
+resumen = f"""
+Resultados del modelado predictivo:
+
+1. Datos procesados:
+   - Total pacientes: {len(df)}
+   - Conjunto de entrenamiento: {X_train.shape[0]} ({X_train.shape[0]/len(X)*100:.1f}%)
+   - Conjunto de validación: {X_val.shape[0]} ({X_val.shape[0]/len(X)*100:.1f}%)
+   - Conjunto de prueba: {X_test.shape[0]} ({X_test.shape[0]/len(X)*100:.1f}%)
+
+2. Mejor modelo seleccionado: {best_model_name}
+   - F1-Score (prueba): {test_metrics['f1']:.4f}
+   - AUC-ROC (prueba): {test_metrics['roc_auc']:.4f}
+   - Accuracy (prueba): {test_metrics['accuracy']:.2%}
+
+3. Desempeño clínico:
+   - Sensibilidad (Recall): {test_metrics['recall']:.2%}
+     (Capacidad para detectar pacientes realmente enfermos)
+   - Especificidad: {tn/(tn+fp):.2%}
+     (Capacidad para identificar correctamente a pacientes sanos)
+   - Precisión: {test_metrics['precision']:.2%}
+     (Confiabilidad de los diagnósticos positivos)
+
+4. Análisis de errores:
+   - Falsos positivos: {len(fp_cases)} (Riesgo de pruebas adicionales innecesarias)
+   - Falsos negativos: {len(fn_cases)} (Riesgo de no tratamiento oportuno)
+
+5. Comparativa general:
+   - {results_df.index[0]}: F1={results_df.iloc[0]['f1']:.3f}, AUC={results_df.iloc[0]['roc_auc']:.3f}
+   - {results_df.index[1]}: F1={results_df.iloc[1]['f1']:.3f}, AUC={results_df.iloc[1]['roc_auc']:.3f}
+   - {results_df.index[2]}: F1={results_df.iloc[2]['f1']:.3f}, AUC={results_df.iloc[2]['roc_auc']:.3f}
+   - {results_df.index[3]}: F1={results_df.iloc[3]['f1']:.3f}, AUC={results_df.iloc[3]['roc_auc']:.3f}
+
+6. Conclusiones:
+   - El modelo seleccionado demuestra robustez para screening inicial.
+   - La métrica de sensibilidad ({test_metrics['recall']:.1f}%) sugiere utilidad clínica para evitar descartar casos positivos.
+   - Se recomienda validación clínica adicional para casos en los límites
+"""
+
+print(resumen)
+
+# Código de reproducibilidad
+print("\n" + "="*80)
+print("Código de reproducibilidad")
+print("="*80)
+
+print('''
+ Cargar modelo entrenado
+import pickle
+import pandas as pd
+
+with open('mejor_modelo_cardio.pkl', 'rb') as f:
+    modelo = pickle.load(f)
+
+ Ejemplo de nuevo paciente
+nuevo_paciente = pd.DataFrame({
+    'age': [55], 'sex': [1], 'cp': [2], 'trestbps': [130],
+    'chol': [250], 'fbs': [0], 'restecg': [1], 'thalach': [150],
+    'exang': [0], 'oldpeak': [1.2], 'slope': [2], 'ca': [0], 'thal': [2]
+})
+
+ Generar predicción
+pred = modelo.predict(nuevo_paciente)[0]
+prob = modelo.predict_proba(nuevo_paciente)[0][1]
+
+print(f"Diagnóstico predicho: {'ENFERMEDAD CARDÍACA' if pred == 1 else 'SANO'}")
+print(f"Probabilidad estimada: {prob:.1%}")
+''')
+
+print("\n" + "="*80)
+print("Fase de modelado completada exitosamente")
+print("="*80)
