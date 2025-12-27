@@ -4,8 +4,6 @@ Profesores: David Alexis García Espinosa, Derek Saúl Morán Pérez, Luis Eduar
 Integrantes: Admin Zaid Ibáñez Martínez, Jesús Eduardo Guerra Crespo.
 Temas Selectos de Biomatemáticas: Introducción a la ciencia de Datos Aplicada a escenarios médico-biológicos
 Grupo 8416
-Aquí tienes el texto completo con la misma redacción y estructura, pero sin los asteriscos (*) ni los símbolos de numeral (#):
-
 INSTRUCCIONES PARA USAR EL PROYECTO DE PREDICCIÓN DE ENFERMEDAD CARDÍACA
 
 Descripción General Este proyecto realiza Análisis Exploratorio de Datos (EDA) y Modelado Predictivo para diagnosticar enfermedades cardíacas utilizando 13 variables clínicas. El proyecto está dividido en dos fases principales:
