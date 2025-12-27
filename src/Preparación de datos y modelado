@@ -1,0 +1,400 @@
+# Proyecto: Predicción de enfermedad cardíaca
+# Fase 2: Preparación de datos y modelado
+
+# Importar librerías adicionales
+!pip install xgboost -q
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+# Librerías para modelado
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+
+# Modelos
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
+
+# Métricas de evaluación
+from sklearn.metrics import (accuracy_score, precision_score, recall_score,
+                           f1_score, roc_auc_score, confusion_matrix,
+                           classification_report, roc_curve, auc)
+
+# Configuración
+plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
+np.random.seed(42)
+
+print("Librerías cargadas correctamente")
+
+# Cargar datos (si es necesario recargar)
+from google.colab import files
+import io
+
+# Solo ejecutar si df no está definido previamente
+try:
+    df.head()
+except NameError:
+    print("Sube el archivo heart.csv")
+    uploaded = files.upload()
+    df = pd.read_csv(io.BytesIO(uploaded['heart.csv']))
+
+print(f"Dataset activo: {df.shape[0]} filas, {df.shape[1]} columnas")
+
+# Análisis de calidad de datos y limpieza
+print("\n" + "="*80)
+print("Análisis de calidad de datos")
+print("="*80)
+
+print("Valores nulos por columna:")
+print(df.isnull().sum())
+
+print("\nValores duplicados:")
+duplicados = df.duplicated().sum()
+print(f"  {duplicados} registros duplicados ({duplicados/len(df)*100:.2f}%)")
+
+if duplicados > 0:
+    print("  Eliminando registros duplicados para evitar sesgo en el modelo...")
+    df = df.drop_duplicates()
+    print(f"  Nuevo tamaño del dataset: {df.shape[0]} registros")
+
+# Preparación de datos para modelado
+print("\n" + "="*80)
+print("Preparación de datos para modelado")
+print("="*80)
+
+# Definir variables
+X = df.drop('target', axis=1)
+y = df['target']
+
+# Identificar tipos de variables
+categorical_cols = ['sex', 'cp', 'fbs', 'restecg', 'exang', 'slope', 'ca', 'thal']
+numeric_cols = ['age', 'trestbps', 'chol', 'thalach', 'oldpeak']
+
+print("Variables categóricas:", categorical_cols)
+print("Variables numéricas:", numeric_cols)
+
+# División estratificada de datos
+print("\nDividiendo datos en entrenamiento (70%), validación (15%) y prueba (15%)...")
+X_temp, X_test, y_temp, y_test = train_test_split(
+    X, y, test_size=0.15, stratify=y, random_state=42
+)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=0.1765, stratify=y_temp, random_state=42
+)
+
+print(f"  - Entrenamiento: {X_train.shape[0]} muestras ({X_train.shape[0]/len(X)*100:.1f}%)")
+print(f"  - Validación: {X_val.shape[0]} muestras ({X_val.shape[0]/len(X)*100:.1f}%)")
+print(f"  - Prueba: {X_test.shape[0]} muestras ({X_test.shape[0]/len(X)*100:.1f}%)")
+
+# Pipeline de preprocesamiento
+print("\nCreando pipeline de preprocesamiento...")
+
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_cols),
+        ('cat', categorical_transformer, categorical_cols)
+    ])
+
+print("Pipeline de preprocesamiento configurado exitosamente")
+
+# Definición y entrenamiento de modelos
+print("\n" + "="*80)
+print("Definición y entrenamiento de modelos")
+print("="*80)
+
+models = {
+    'Regresión Logística': LogisticRegression(random_state=42, max_iter=1000),
+    'Árbol de Decisión': DecisionTreeClassifier(random_state=42),
+    'Random Forest': RandomForestClassifier(random_state=42, n_jobs=-1),
+    'XGBoost': XGBClassifier(random_state=42, eval_metric='logloss', use_label_encoder=False)
+}
+
+# Hiperparámetros para búsqueda
+param_grids = {
+    'Regresión Logística': {
+        'classifier__C': [0.01, 0.1, 1, 10],
+        'classifier__penalty': ['l2'],
+        'classifier__solver': ['liblinear']
+    },
+    'Árbol de Decisión': {
+        'classifier__max_depth': [3, 5, 7, None],
+        'classifier__min_samples_split': [2, 5, 10]
+    },
+    'Random Forest': {
+        'classifier__n_estimators': [50, 100],
+        'classifier__max_depth': [5, 10, None]
+    },
+    'XGBoost': {
+        'classifier__n_estimators': [50, 100],
+        'classifier__max_depth': [3, 5],
+        'classifier__learning_rate': [0.01, 0.1]
+    }
+}
+
+# Entrenamiento con GridSearch
+print("\nEntrenando modelos con validación cruzada (3 folds)...")
+
+results = {}
+best_models = {}
+
+for name, model in models.items():
+    print(f"\n{'='*50}")
+    print(f"Modelo: {name}")
+    print('='*50)
+
+    pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', model)
+    ])
+
+    grid_search = GridSearchCV(
+        pipeline,
+        param_grids[name],
+        cv=3,
+        scoring='f1',
+        n_jobs=-1,
+        verbose=0
+    )
+
+    grid_search.fit(X_train, y_train)
+    best_models[name] = grid_search.best_estimator_
+
+    y_val_pred = best_models[name].predict(X_val)
+    y_val_prob = best_models[name].predict_proba(X_val)[:, 1]
+
+    metrics = {
+        'accuracy': accuracy_score(y_val, y_val_pred),
+        'precision': precision_score(y_val, y_val_pred),
+        'recall': recall_score(y_val, y_val_pred),
+        'f1': f1_score(y_val, y_val_pred),
+        'roc_auc': roc_auc_score(y_val, y_val_prob),
+        'best_params': grid_search.best_params_
+    }
+
+    results[name] = metrics
+
+    print(f"  Mejores parámetros: {grid_search.best_params_}")
+    print(f"  F1-score (val): {metrics['f1']:.4f}")
+    print(f"  AUC-ROC (val): {metrics['roc_auc']:.4f}")
+
+# Evaluación comparativa
+print("\n" + "="*80)
+print("Evaluación comparativa de resultados")
+print("="*80)
+
+results_df = pd.DataFrame(results).T.round(4)
+print("\nMétricas en conjunto de validación:")
+print(results_df[['accuracy', 'precision', 'recall', 'f1', 'roc_auc']])
+
+# Gráfico comparativo de métricas
+plt.figure(figsize=(12, 6))
+metrics_to_plot = ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']
+x = np.arange(len(results_df))
+width = 0.15
+
+for i, metric in enumerate(metrics_to_plot):
+    plt.bar(x + i*width - width*2, results_df[metric], width, label=metric)
+
+plt.xticks(x, results_df.index, rotation=45)
+plt.ylabel('Puntaje')
+plt.title('Comparación de métricas por modelo')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+# Matrices de confusión
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+axes = axes.flatten()
+
+for idx, (name, model) in enumerate(best_models.items()):
+    y_val_pred = model.predict(X_val)
+    cm = confusion_matrix(y_val, y_val_pred)
+
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[idx])
+    axes[idx].set_title(f'Matriz: {name}')
+    axes[idx].set_xlabel('Predicho')
+    axes[idx].set_ylabel('Real')
+    axes[idx].set_xticklabels(['Sano', 'Enfermo'])
+    axes[idx].set_yticklabels(['Sano', 'Enfermo'])
+
+plt.tight_layout()
+plt.show()
+
+# Curvas ROC
+print("\n" + "="*80)
+print("Curvas ROC comparativas")
+print("="*80)
+
+plt.figure(figsize=(10, 8))
+
+for name, model in best_models.items():
+    y_val_prob = model.predict_proba(X_val)[:, 1]
+    fpr, tpr, _ = roc_curve(y_val, y_val_prob)
+    auc_score = roc_auc_score(y_val, y_val_prob)
+
+    plt.plot(fpr, tpr, label=f'{name} (AUC = {auc_score:.3f})', linewidth=2)
+
+plt.plot([0, 1], [0, 1], 'k--', label='Aleatorio')
+plt.xlabel('Tasa de falsos positivos')
+plt.ylabel('Tasa de verdaderos positivos')
+plt.title('Curvas ROC - Comparación de modelos')
+plt.legend(loc='lower right')
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# Evaluación final en conjunto de prueba
+print("\n" + "="*80)
+print("Evaluación final en conjunto de prueba")
+print("="*80)
+
+best_model_name = results_df['f1'].idxmax()
+best_model = best_models[best_model_name]
+
+print(f"Mejor modelo seleccionado: {best_model_name}")
+print(f"  F1-score en validación: {results_df.loc[best_model_name, 'f1']:.4f}")
+
+# Evaluar en prueba
+y_test_pred = best_model.predict(X_test)
+y_test_prob = best_model.predict_proba(X_test)[:, 1]
+
+test_metrics = {
+    'accuracy': accuracy_score(y_test, y_test_pred),
+    'precision': precision_score(y_test, y_test_pred),
+    'recall': recall_score(y_test, y_test_pred),
+    'f1': f1_score(y_test, y_test_pred),
+    'roc_auc': roc_auc_score(y_test, y_test_prob)
+}
+
+print("\nMétricas finales en conjunto de prueba:")
+for metric, value in test_metrics.items():
+    print(f"  {metric.capitalize()}: {value:.4f}")
+
+# Matriz de confusión detallada
+cm_test = confusion_matrix(y_test, y_test_pred)
+tn, fp, fn, tp = cm_test.ravel()
+
+print("\n" + "="*80)
+print("Análisis clínico de resultados")
+print("="*80)
+
+print("\nMatriz de confusión final:")
+print(f"               Predicción")
+print(f"               Sí    No")
+print(f"Real    Sí     {tp:4d}  {fn:4d}")
+print(f"        No     {fp:4d}  {tn:4d}")
+
+print("\nInterpretación de métricas:")
+print(f"- Exactitud (Accuracy): {test_metrics['accuracy']:.2%} global de aciertos.")
+print(f"- Precisión: {test_metrics['precision']:.2%} de los diagnosticados enfermos realmente lo están.")
+print(f"- Sensibilidad (Recall): {test_metrics['recall']:.2%} de los enfermos fueron detectados correctamente.")
+print(f"- Especificidad: {tn/(tn+fp):.2%} de los sanos fueron identificados correctamente.")
+print(f"- F1-Score: {test_metrics['f1']:.4f} (balance entre precisión y sensibilidad).")
+print(f"- AUC-ROC: {test_metrics['roc_auc']:.4f} (capacidad de distinción entre clases).")
+
+print("\nReporte de clasificación detallado:")
+print(classification_report(y_test, y_test_pred, target_names=['Sano', 'Enfermo']))
+
+# Gráfico de importancia de características
+if hasattr(best_model.named_steps['classifier'], 'feature_importances_'):
+    print("\nAnálisis de importancia de características:")
+
+    # Obtener nombres de características
+    preprocessor = best_model.named_steps['preprocessor']
+
+    # Para numéricas
+    feature_names = numeric_cols.copy()
+
+    # Para categóricas
+    categorical_transformer = preprocessor.named_transformers_['cat']
+    if hasattr(categorical_transformer.named_steps['onehot'], 'get_feature_names_out'):
+        cat_features = categorical_transformer.named_steps['onehot'].get_feature_names_out(categorical_cols)
+        feature_names.extend(cat_features)
+
+    importances = best_model.named_steps['classifier'].feature_importances_
+
+    importance_df = pd.DataFrame({
+        'feature': feature_names[:len(importances)],
+        'importance': importances
+    }).sort_values('importance', ascending=False).head(10)
+
+    plt.figure(figsize=(10, 6))
+    bars = plt.barh(importance_df['feature'], importance_df['importance'])
+    plt.xlabel('Importancia relativa')
+    plt.title(f'Top 10 variables más influyentes - {best_model_name}')
+    plt.gca().invert_yaxis()
+
+    for bar in bars:
+        width = bar.get_width()
+        plt.text(width, bar.get_y() + bar.get_height()/2,
+                f'{width:.3f}', ha='left', va='center')
+
+    plt.tight_layout()
+    plt.show()
+
+    print("\nTop 5 variables más influyentes:")
+    for i, row in importance_df.head().iterrows():
+        print(f"  {row['feature']}: {row['importance']:.4f}")
+
+# Análisis de errores
+print("\n" + "="*80)
+print("Análisis de errores de predicción")
+print("="*80)
+
+test_results = pd.DataFrame({
+    'real': y_test,
+    'predicho': y_test_pred,
+    'prob_enfermo': y_test_prob
+}, index=X_test.index)
+
+fp_cases = test_results[(test_results['real'] == 0) & (test_results['predicho'] == 1)]
+fn_cases = test_results[(test_results['real'] == 1) & (test_results['predicho'] == 0)]
+
+print(f"- Falsos positivos (Sanos diagnosticados enfermos): {len(fp_cases)}")
+print(f"- Falsos negativos (Enfermos no detectados): {len(fn_cases)}")
+print(f"- Porcentaje total de acierto: {(len(y_test) - len(fp_cases) - len(fn_cases))/len(y_test)*100:.1f}%")
+
+# Guardar resultados
+print("\n" + "="*80)
+print("Guardado de resultados y modelos")
+print("="*80)
+
+import pickle
+import json
+
+# Guardar modelo
+with open('mejor_modelo_cardio.pkl', 'wb') as f:
+    pickle.dump(best_model, f)
+
+# Guardar métricas
+with open('metricas_prueba.json', 'w') as f:
+    json.dump(test_metrics, f, indent=4)
+
+# Guardar resultados comparativos
+results_df.to_csv('comparativa_modelos.csv')
+
+print("Archivos generados exitosamente:")
+print("  - mejor_modelo_cardio.pkl")
+print("  - metricas_prueba.json")
+print("  - comparativa_modelos.csv")
